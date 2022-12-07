@@ -73,20 +73,20 @@ void Error_Handler(void);
 #define ADC_CH2_GPIO_Port GPIOA
 #define ADC_5VREF_Pin GPIO_PIN_2
 #define ADC_5VREF_GPIO_Port GPIOA
-#define TACH6_Pin GPIO_PIN_4
-#define TACH6_GPIO_Port GPIOA
-#define TACH5_Pin GPIO_PIN_5
-#define TACH5_GPIO_Port GPIOA
-#define TACH4_Pin GPIO_PIN_6
-#define TACH4_GPIO_Port GPIOA
-#define TACH3_Pin GPIO_PIN_7
-#define TACH3_GPIO_Port GPIOA
-#define TACH2_Pin GPIO_PIN_4
-#define TACH2_GPIO_Port GPIOC
-#define TACH1_Pin GPIO_PIN_5
-#define TACH1_GPIO_Port GPIOC
-#define PWM_FAN_Pin GPIO_PIN_0
-#define PWM_FAN_GPIO_Port GPIOB
+#define FAN_TACH6_Pin GPIO_PIN_4
+#define FAN_TACH6_GPIO_Port GPIOA
+#define FAN_TACH5_Pin GPIO_PIN_5
+#define FAN_TACH5_GPIO_Port GPIOA
+#define FAN_TACH4_Pin GPIO_PIN_6
+#define FAN_TACH4_GPIO_Port GPIOA
+#define FAN_TACH3_Pin GPIO_PIN_7
+#define FAN_TACH3_GPIO_Port GPIOA
+#define FAN_TACH2_Pin GPIO_PIN_4
+#define FAN_TACH2_GPIO_Port GPIOC
+#define FAN_TACH1_Pin GPIO_PIN_5
+#define FAN_TACH1_GPIO_Port GPIOC
+#define FAN_PWM_Pin GPIO_PIN_0
+#define FAN_PWM_GPIO_Port GPIOB
 #define SPI_MSTR_Pin GPIO_PIN_6
 #define SPI_MSTR_GPIO_Port GPIOC
 #define SPI_SLOW_Pin GPIO_PIN_7
@@ -105,10 +105,8 @@ void Error_Handler(void);
 #define SPI_MISO_GPIO_Port GPIOC
 #define SPI_MOSI_Pin GPIO_PIN_12
 #define SPI_MOSI_GPIO_Port GPIOC
-#define AMS_FAULT2_Pin GPIO_PIN_3
-#define AMS_FAULT2_GPIO_Port GPIOB
-#define AMS_FAULT1_Pin GPIO_PIN_4
-#define AMS_FAULT1_GPIO_Port GPIOB
+#define AMS_FAULT_Pin GPIO_PIN_4
+#define AMS_FAULT_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
