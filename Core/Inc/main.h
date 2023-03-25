@@ -59,6 +59,9 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define BUTTON_NUCLEO_Pin GPIO_PIN_13
+#define BUTTON_NUCLEO_GPIO_Port GPIOC
+#define BUTTON_NUCLEO_EXTI_IRQn EXTI15_10_IRQn
 #define LED_CAN_Pin GPIO_PIN_0
 #define LED_CAN_GPIO_Port GPIOC
 #define LED_WARN_Pin GPIO_PIN_1
@@ -75,8 +78,8 @@ void Error_Handler(void);
 #define ADC_5VREF_GPIO_Port GPIOA
 #define FAN_TACH6_Pin GPIO_PIN_4
 #define FAN_TACH6_GPIO_Port GPIOA
-#define FAN_TACH5_Pin GPIO_PIN_5
-#define FAN_TACH5_GPIO_Port GPIOA
+#define LED_NUCLEO_Pin GPIO_PIN_5
+#define LED_NUCLEO_GPIO_Port GPIOA
 #define FAN_TACH4_Pin GPIO_PIN_6
 #define FAN_TACH4_GPIO_Port GPIOA
 #define FAN_TACH3_Pin GPIO_PIN_7

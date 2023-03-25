@@ -13,6 +13,7 @@
 
 //Calculates the resistance of the thermistor given an adc reading.
 uint16_t Thermistor_R(uint16_t);
+uint16_t Thermistor_R_Aux(uint16_t);
 
 //Calculates the temperature of the thermistor given a resistance for the thermistor.
 uint16_t Thermistor_T(uint16_t);

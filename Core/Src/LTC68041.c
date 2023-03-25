@@ -71,15 +71,15 @@ Copyright 2013 Linear Technology Corp. (LTC)
 #include "control.h"
 #include "stm32_utils.h"
 
-#define LTC6804_CS NISS_Pin
 extern SPI_HandleTypeDef SPI_HANDLE;
-extern struct LTC68041_Data LTCData;
 /*!
   6804 conversion command variables.
 */
 uint8_t ADCV[2]; //!< Cell Voltage conversion command.
 uint8_t ADAX[2]; //!< GPIO conversion command.
 
+uint8_t data_buffer[8*IC_N];
+uint8_t cmd_buffer[4+(8*IC_N)];
 
 /*!
   \brief This function will initialize all 6804 variables and the SPI port.
@@ -171,7 +171,7 @@ void LTC6804_adcv()
   //SPI_HANDLE.Instance->CR1 |= SPI_CR1_SSI;
   //CLEAR_BIT(SPI_HANDLE.Instance->CR1, SPI_CR1_SSI);
   OUTPUT_RESET(OUT_NSS);
-  HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000);
+  SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
   OUTPUT_SET(OUT_NSS);
   //spi_write_array(4,cmd);
   //SPI_HANDLE.Instance->CR1 |= SPI_CR1_SSI;
@@ -216,9 +216,9 @@ void LTC6804_adax()
   cmd[2] = (uint8_t)(cmd_pec >> 8);
   cmd[3] = (uint8_t)(cmd_pec);
 
-  wakeup_idle (); //This will guarantee that the LTC6804 isoSPI port is awake. This command can be removed.
+  wakeup_idle(); //This will guarantee that the LTC6804 isoSPI port is awake. This command can be removed.
   OUTPUT_RESET(OUT_NSS);
-  HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000);
+  SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
   OUTPUT_SET(OUT_NSS);
 
 }
@@ -277,13 +277,13 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
   const uint8_t BYT_IN_REG = 6;
   const uint8_t CELL_IN_REG = 3;
 
-  uint8_t *cell_data;
+  //uint8_t *cell_data;
   uint8_t pec_error = 0;
   uint16_t parsed_cell;
   uint16_t received_pec;
   uint16_t data_pec;
   uint8_t data_counter=0; //data counter
-  cell_data = (uint8_t *) malloc((NUM_RX_BYT*total_ic)*sizeof(uint8_t));
+  //cell_data = (uint8_t *) malloc((NUM_RX_BYT*total_ic)*sizeof(uint8_t));
   //1.a
   if (reg == 0)
   {
@@ -291,7 +291,7 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
     for (uint8_t cell_reg = 1; cell_reg<5; cell_reg++)                    //executes once for each of the LTC6804 cell voltage registers
     {
       data_counter = 0;
-      LTC6804_rdcv_reg(cell_reg, total_ic,cell_data );                //Reads a single Cell voltage register
+      LTC6804_rdcv_reg(cell_reg, total_ic,data_buffer );                //Reads a single Cell voltage register
 
       for (uint8_t current_ic = 0 ; current_ic < total_ic; current_ic++)      // executes for every LTC6804 in the daisy chain
       {
@@ -302,7 +302,7 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
         {
           // loops once for each of the 3 cell voltage codes in the register
 
-          parsed_cell = cell_data[data_counter] + (cell_data[data_counter + 1] << 8);//Each cell code is received as two bytes and is combined to
+          parsed_cell = data_buffer[data_counter] + (data_buffer[data_counter + 1] << 8);//Each cell code is received as two bytes and is combined to
           // create the parsed cell voltage code
 
           cell_codes[current_ic][current_cell  + ((cell_reg - 1) * CELL_IN_REG)] = parsed_cell;
@@ -310,9 +310,9 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
           //must increment by two for each parsed cell code
         }
         //a.iii
-        received_pec = (cell_data[data_counter] << 8) + cell_data[data_counter+1]; //The received PEC for the current_ic is transmitted as the 7th and 8th
+        received_pec = (data_buffer[data_counter] << 8) + data_buffer[data_counter+1]; //The received PEC for the current_ic is transmitted as the 7th and 8th
         //after the 6 cell voltage data bytes
-        data_pec = pec15_calc(BYT_IN_REG, &cell_data[current_ic * NUM_RX_BYT]);
+        data_pec = pec15_calc(BYT_IN_REG, &data_buffer[current_ic * NUM_RX_BYT]);
         if (received_pec != data_pec)
         {
           pec_error = -1;                             //The pec_error variable is simply set negative if any PEC errors
@@ -327,7 +327,7 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
   else
   {
     //b.i
-    LTC6804_rdcv_reg(reg, total_ic,cell_data);
+    LTC6804_rdcv_reg(reg, total_ic,data_buffer);
     for (uint8_t current_ic = 0 ; current_ic < total_ic; current_ic++)        // executes for every LTC6804 in the daisy chain
     {
       // current_ic is used as the IC counter
@@ -336,7 +336,7 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
       {
         // loops once for each of the 3 cell voltage codes in the register
 
-        parsed_cell = cell_data[data_counter] + (cell_data[data_counter+1]<<8); //Each cell code is received as two bytes and is combined to
+        parsed_cell = data_buffer[data_counter] + (data_buffer[data_counter+1]<<8); //Each cell code is received as two bytes and is combined to
         // create the parsed cell voltage code
 
         cell_codes[current_ic][current_cell + ((reg - 1) * CELL_IN_REG)] = 0x0000FFFF & parsed_cell;
@@ -344,9 +344,9 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
         //must increment by two for each parsed cell code
       }
       //b.iii
-      received_pec = (cell_data[data_counter] << 8 )+ cell_data[data_counter + 1]; //The received PEC for the current_ic is transmitted as the 7th and 8th
+      received_pec = (data_buffer[data_counter] << 8 )+ data_buffer[data_counter + 1]; //The received PEC for the current_ic is transmitted as the 7th and 8th
       //after the 6 cell voltage data bytes
-      data_pec = pec15_calc(BYT_IN_REG, &cell_data[current_ic * NUM_RX_BYT]);
+      data_pec = pec15_calc(BYT_IN_REG, &data_buffer[current_ic * NUM_RX_BYT]);
       if (received_pec != data_pec)
       {
         pec_error = -1;                             //The pec_error variable is simply set negative if any PEC errors
@@ -358,7 +358,7 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
   }
 
 //2
-  free(cell_data);
+  //free(cell_data);
   return(pec_error);
 }
 /*
@@ -449,14 +449,14 @@ void LTC6804_rdcv_reg(uint8_t reg, //Determines which cell voltage register is r
   //3
   wakeup_idle (); //This will guarantee that the LTC6804 isoSPI port is awake. This command can be removed.
 
-  for(int i = 0;i<8;i++)
+  for(int i = 0;i<(REG_LEN*total_ic);i++)
   {
 	  data[i]=0;
   }
   //4
   OUTPUT_RESET(OUT_NSS);
-  HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000);
-  HAL_SPI_Receive(&SPI_HANDLE, data, (REG_LEN*total_ic), 1000);
+  SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
+  SPI_(HAL_SPI_Receive(&SPI_HANDLE, data, (REG_LEN*total_ic), 1000));
   OUTPUT_SET(OUT_NSS);
 }
 /*
@@ -510,13 +510,13 @@ int8_t LTC6804_rdaux(uint8_t reg, //Determines which GPIO voltage register is re
   const uint8_t BYT_IN_REG = 6;
   const uint8_t GPIO_IN_REG = 3;
 
-  uint8_t *data;
+  //uint8_t *data;
   uint8_t data_counter = 0;
   int8_t pec_error = 0;
   uint16_t parsed_aux;
   uint16_t received_pec;
   uint16_t data_pec;
-  data = (uint8_t *) malloc((NUM_RX_BYT*total_ic)*sizeof(uint8_t));
+  //data = (uint8_t *) malloc((NUM_RX_BYT*total_ic)*sizeof(uint8_t));
   //1.a
   if (reg == 0)
   {
@@ -524,7 +524,8 @@ int8_t LTC6804_rdaux(uint8_t reg, //Determines which GPIO voltage register is re
     for (uint8_t gpio_reg = 1; gpio_reg<3; gpio_reg++)                //executes once for each of the LTC6804 aux voltage registers
     {
       data_counter = 0;
-      LTC6804_rdaux_reg(gpio_reg, total_ic,data);                 //Reads the raw auxiliary register data into the data[] array
+
+      LTC6804_rdaux_reg(gpio_reg, total_ic,data_buffer);                 //Reads the raw auxiliary register data into the data[] array
 
       for (uint8_t current_ic = 0 ; current_ic < total_ic; current_ic++)      // executes for every LTC6804 in the daisy chain
       {
@@ -535,7 +536,7 @@ int8_t LTC6804_rdaux(uint8_t reg, //Determines which GPIO voltage register is re
         {
           // loops once for each of the 3 gpio voltage codes in the register
 
-          parsed_aux = data[data_counter] + (data[data_counter+1]<<8);              //Each gpio codes is received as two bytes and is combined to
+          parsed_aux = data_buffer[data_counter] + (data_buffer[data_counter+1]<<8);              //Each gpio codes is received as two bytes and is combined to
           // create the parsed gpio voltage code
 
           aux_codes[current_ic][current_gpio +((gpio_reg-1)*GPIO_IN_REG)] = parsed_aux;
@@ -544,9 +545,9 @@ int8_t LTC6804_rdaux(uint8_t reg, //Determines which GPIO voltage register is re
 
         }
         //a.iii
-        received_pec = (data[data_counter]<<8)+ data[data_counter+1];          //The received PEC for the current_ic is transmitted as the 7th and 8th
+        received_pec = (data_buffer[data_counter]<<8)+ data_buffer[data_counter+1];          //The received PEC for the current_ic is transmitted as the 7th and 8th
         //after the 6 gpio voltage data bytes
-        data_pec = pec15_calc(BYT_IN_REG, &data[current_ic*NUM_RX_BYT]);
+        data_pec = pec15_calc(BYT_IN_REG, &data_buffer[current_ic*NUM_RX_BYT]);
         if (received_pec != data_pec)
         {
           pec_error = -1;                             //The pec_error variable is simply set negative if any PEC errors
@@ -564,7 +565,7 @@ int8_t LTC6804_rdaux(uint8_t reg, //Determines which GPIO voltage register is re
   else
   {
     //b.i
-    LTC6804_rdaux_reg(reg, total_ic, data);
+    LTC6804_rdaux_reg(reg, total_ic, data_buffer);
     for (int current_ic = 0 ; current_ic < total_ic; current_ic++)            // executes for every LTC6804 in the daisy chain
     {
       // current_ic is used as an IC counter
@@ -574,16 +575,16 @@ int8_t LTC6804_rdaux(uint8_t reg, //Determines which GPIO voltage register is re
       {
         // once for each aux voltage in the register
 
-        parsed_aux = (data[data_counter] + (data[data_counter+1]<<8));        //Each gpio codes is received as two bytes and is combined to
+        parsed_aux = (data_buffer[data_counter] + (data_buffer[data_counter+1]<<8));        //Each gpio codes is received as two bytes and is combined to
         // create the parsed gpio voltage code
         aux_codes[current_ic][current_gpio +((reg-1)*GPIO_IN_REG)] = parsed_aux;
         data_counter=data_counter+2;                      //Because gpio voltage codes are two bytes the data counter
         //must increment by two for each parsed gpio voltage code
       }
       //b.iii
-      received_pec = (data[data_counter]<<8) + data[data_counter+1];         //The received PEC for the current_ic is transmitted as the 7th and 8th
+      received_pec = (data_buffer[data_counter]<<8) + data_buffer[data_counter+1];         //The received PEC for the current_ic is transmitted as the 7th and 8th
       //after the 6 gpio voltage data bytes
-      data_pec = pec15_calc(BYT_IN_REG, &data[current_ic*NUM_RX_BYT]);
+      data_pec = pec15_calc(BYT_IN_REG, &data_buffer[current_ic*NUM_RX_BYT]);
       if (received_pec != data_pec)
       {
         pec_error = -1;                               //The pec_error variable is simply set negative if any PEC errors
@@ -594,7 +595,7 @@ int8_t LTC6804_rdaux(uint8_t reg, //Determines which GPIO voltage register is re
       //must be incremented by 2 bytes to point to the next ICs gpio voltage data
     }
   }
-  free(data);
+  //free(data);
   return (pec_error);
 }
 /*
@@ -675,10 +676,13 @@ void LTC6804_rdaux_reg(uint8_t reg, //Determines which GPIO voltage register is 
   //3
   wakeup_idle (); //This will guarantee that the LTC6804 isoSPI port is awake, this command can be removed.
   //4
-
+  for(int i = 0;i<(REG_LEN*total_ic);i++)
+  {
+	  data[i]=0;
+  }
   OUTPUT_RESET(OUT_NSS);
-  HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000);
-  HAL_SPI_Receive(&SPI_HANDLE, data, (REG_LEN*total_ic), 1000);
+  SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
+  SPI_(HAL_SPI_Receive(&SPI_HANDLE, data, (REG_LEN*total_ic), 1000));
   OUTPUT_SET(OUT_NSS);
 }
 /*
@@ -723,7 +727,7 @@ void LTC6804_clrcell()
 
   //4
   OUTPUT_RESET(OUT_NSS);
-  HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000);
+  SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
   OUTPUT_SET(OUT_NSS);
 }
 /*
@@ -769,7 +773,7 @@ void LTC6804_clraux()
   wakeup_idle (); //This will guarantee that the LTC6804 isoSPI port is awake.This command can be removed.
   //4
   OUTPUT_RESET(OUT_NSS);
-  HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000);
+  SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
   OUTPUT_SET(OUT_NSS);
 }
 /*
@@ -816,17 +820,17 @@ void LTC6804_wrcfg(uint8_t total_ic, //The number of ICs being written to
 {
   const uint8_t BYTES_IN_REG = 6;
   const uint8_t CMD_LEN = 4+(8*total_ic);
-  uint8_t *cmd;
+  //uint8_t *cmd;
   uint16_t cfg_pec;
   uint8_t cmd_index; //command counter
 
-  cmd = (uint8_t *)malloc(CMD_LEN*sizeof(uint8_t));
+  //cmd = (uint8_t *)malloc(CMD_LEN*sizeof(uint8_t));
 
   //1
-  cmd[0] = 0x00;
-  cmd[1] = 0x01;
-  cmd[2] = 0x3d;
-  cmd[3] = 0x6e;
+  cmd_buffer[0] = 0x00;
+  cmd_buffer[1] = 0x01;
+  cmd_buffer[2] = 0x3d;
+  cmd_buffer[3] = 0x6e;
 
   //2
   cmd_index = 4;
@@ -839,23 +843,25 @@ void LTC6804_wrcfg(uint8_t total_ic, //The number of ICs being written to
     {
       // current_byte is the byte counter
 
-      cmd[cmd_index] = config[current_ic-1][current_byte];            //adding the config data to the array to be sent
+      cmd_buffer[cmd_index] = config[current_ic-1][current_byte];            //adding the config data to the array to be sent
       cmd_index = cmd_index + 1;
     }
     //3
     cfg_pec = (uint16_t)pec15_calc(BYTES_IN_REG, &config[current_ic-1][0]);   // calculating the PEC for each ICs configuration register data
-    cmd[cmd_index] = (uint8_t)(cfg_pec >> 8);
-    cmd[cmd_index + 1] = (uint8_t)cfg_pec;
+    cmd_buffer[cmd_index] = (uint8_t)(cfg_pec >> 8);
+    cmd_buffer[cmd_index + 1] = (uint8_t)(cfg_pec&0xFF);
     cmd_index = cmd_index + 2;
   }
+
+  //cmd_buffer[cmd_index] == NULL;
 
   //4
   wakeup_idle ();                                 //This will guarantee that the LTC6804 isoSPI port is awake.This command can be removed.
   //5
   OUTPUT_RESET(OUT_NSS);
-  HAL_SPI_Transmit(&SPI_HANDLE, cmd, CMD_LEN, 1000);
+  SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd_buffer, CMD_LEN, 1000));
   OUTPUT_SET(OUT_NSS);
-  free(cmd);
+  //free(cmd);
 }
 /*
   WRCFG Sequence:
@@ -920,8 +926,8 @@ int8_t LTC6804_rdcfg(uint8_t total_ic, //Number of ICs in the system
   wakeup_idle (); //This will guarantee that the LTC6804 isoSPI port is awake. This command can be removed.
 //3
   OUTPUT_RESET(OUT_NSS);
-  HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000);
-  HAL_SPI_Receive(&SPI_HANDLE, rx_data, (BYTES_IN_REG*total_ic), 1000);
+  SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
+  SPI_(HAL_SPI_Receive(&SPI_HANDLE, rx_data, (BYTES_IN_REG*total_ic), 1000));
   OUTPUT_SET(OUT_NSS);
 
   for (uint8_t current_ic = 0; current_ic < total_ic; current_ic++)       //executes for each LTC6804 in the daisy chain and packs the data
@@ -966,7 +972,7 @@ int8_t LTC6804_rdcfg(uint8_t total_ic, //Number of ICs in the system
 void wakeup_idle()
 {
 	  OUTPUT_RESET(OUT_NSS);
-	  delayu(4); //Guarantees the isoSPI will be in ready mode
+	  delayu(10); //Guarantees the isoSPI will be in ready mode
 	  OUTPUT_SET(OUT_NSS);
 }
 

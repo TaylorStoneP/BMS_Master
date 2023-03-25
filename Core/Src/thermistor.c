@@ -10,7 +10,19 @@
 uint16_t Thermistor_R(uint16_t thermistor_output)
 {
 	// Calculation for thermistor resistance 10k/(Vo/Vin)-10k-MUXr.
+	if(thermistor_output==0){
+		return 0;
+	}
 	return 10000.0f/((float)thermistor_output/50000)-10030;
+}
+
+uint16_t Thermistor_R_Aux(uint16_t thermistor_output)
+{
+	// Calculation for thermistor resistance 10k/(Vo/Vin)-10k-MUXr.
+	if(thermistor_output==0){
+		return 0;
+	}
+	return 10000.0f/((50000.0f/(float)thermistor_output)-1);
 }
 
 uint16_t Thermistor_T(uint16_t thermistor_R)

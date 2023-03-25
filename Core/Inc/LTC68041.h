@@ -181,9 +181,6 @@ static const unsigned int crc15Table[256] = {0x0,0xc599, 0xceab, 0xb32, 0xd8cf, 
 #define DCP_DISABLED 0
 #define DCP_ENABLED 1
 
-
-
-
 void LTC6804_initialize();
 
 void set_adc(uint8_t MD, uint8_t DCP, uint8_t CH, uint8_t CHG);

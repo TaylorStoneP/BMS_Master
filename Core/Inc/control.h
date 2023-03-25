@@ -8,11 +8,37 @@
 #ifndef INC_CONTROL_H_
 #define INC_CONTROL_H_
 #include "main.h"
+#include "stm32_utils.h"
 
 //Number of ICs in system.
-#define IC_N 1
+#define IC_N 4
 #define SEGMENT_N ((1+IC_N)/2)
 extern uint8_t N_SEGMENTS, N_CELLS_PER_SEG, N_TEMP_ROWS, N_TEMP_COLS, N_AUX_TEMPS;
+
+#define DELAY_TEMP_SCH 20
+
+#define SPI_EN 1
+#if SPI_EN == 0
+#define SPI_(x)
+#else
+#define SPI_(x) x
+#endif
+
+//===CONNECTIONSTATUSES===
+extern uint32_t DeviceConnections;
+enum DEVICE_CONNECTIONS{
+	DEVCON_Seg1		= BIT1,
+	DEVCON_Seg2		= BIT2,
+	DEVCON_Seg3		= BIT3,
+	DEVCON_Seg4		= BIT4,
+	DEVCON_Seg5		= BIT5,
+	DEVCON_Seg6		= BIT6,
+	DEVCON_Seg7		= BIT7,
+	DEVCON_Seg8		= BIT8,
+	DEVCON_Cient 	= BIT9,
+	DEVCON_RCB 		= BIT10,
+};
+//========================
 
 enum CFGR0{
 	CFGR0_GPIO1 = 0x08,
@@ -90,20 +116,25 @@ typedef enum DCC_CELLS{
 	DCC_CELL7 = LTC_CELL9,
 }DCC_CELLS;
 
-typedef struct LTC68041_Data
+typedef struct BMS_Data_Struct
 {
 	uint8_t chip_config[IC_N][6];
 	uint16_t cell_voltage[SEGMENT_N][14];
 	uint8_t DCC[SEGMENT_N][14];
 	uint16_t segment_temperatures[SEGMENT_N][22];
+	uint16_t segment_minimum_temperatures[SEGMENT_N];
+	uint16_t segment_maximum_temperatures[SEGMENT_N];
 	uint16_t minimum_cell_voltage;
+	uint16_t minimum_cell_id;
 	uint16_t maximum_cell_voltage;
+	uint16_t maximum_cell_id;
 	uint16_t minimum_temperature;
 	uint16_t maximum_temperature;
 	uint8_t current_mux;
 	uint8_t spi_free;
-}LTC68041_Data;
-extern LTC68041_Data LTCData;
+	uint16_t auto_balance_wait_period;
+}BMS_Data_Struct;
+extern BMS_Data_Struct BMS_Data;
 
 typedef enum LTC_GPIO{
 	LTC_GPIO1 = CFGR0_GPIO1,
@@ -139,6 +170,7 @@ extern LTC_MUX_SEL LTC_MUX_LUT[8];
 extern int LTC_NTC_LUT_1[8];
 extern int LTC_NTC_LUT_2[8];
 extern int LTC_NTC_LUT_3[8];
+extern uint16_t DCC_LUT[7];
 
 typedef enum LTC_Index{
 	LTC_ALL = 0,
@@ -160,13 +192,37 @@ typedef enum LTC_Index{
 	LTC_16 = 0x8000
 }LTC_Index;
 
+enum NTC_TO_TEMP{
+	NTC1 = 0,
+	NTC2 = 7,
+	NTC3 = 14,
+	NTC4 = 1,
+	NTC5 = 8,
+	NTC6 = 15,
+	NTC7 = 2,
+	NTC8 = 9,
+	NTC9 = 16,
+	NTC10 = 3,
+	NTC11 = 10,
+	NTC12 = 17,
+	NTC13 = 4,
+	NTC14 = 11,
+	NTC15 = 18,
+	NTC16 = 5,
+	NTC17 = 12,
+	NTC18 = 19,
+	NTC19 = 6,
+	NTC20 = 13,
+	NTC21 = 20,
+};
+
 void LTC68041_UpdateCFGRx(LTC_Index chip, uint8_t CFGRx, uint8_t byte, uint8_t ignore_mask);
 void LTC68041_ConfigGPIO(LTC_Index chips, LTC_GPIO pins);
 void LTC68041_ConfigDCC(LTC_Index chips, LTC_CELLS cell);
 void LTC68041_ConfigDCTO(LTC_Index chips, LTC_DCTO dcto);
 void LTC68041_ConfigSend(uint8_t ic_n);
 
-uint16_t MinimumCellVoltage();
+void GrabMinMaxCellVoltage();
 void GrabMinMaxSegmentTemperature();
 
 #endif /* INC_CONTROL_H_ */
