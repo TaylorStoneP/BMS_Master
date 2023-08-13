@@ -9,13 +9,20 @@
 #define INC_CONTROL_H_
 #include "main.h"
 #include "stm32_utils.h"
+#include "mathops.h"
 
 //Number of ICs in system.
-#define IC_N 4
+#define IC_N 16
 #define SEGMENT_N ((1+IC_N)/2)
-extern uint8_t N_SEGMENTS, N_CELLS_PER_SEG, N_TEMP_ROWS, N_TEMP_COLS, N_AUX_TEMPS;
+#define CELLS_PER_SEG (14)
+#define CELLS_N (SEGMENT_N*CELLS_PER_SEG)
 
-#define DELAY_TEMP_SCH 20
+#define DELAY_TEMP_SCH 10
+
+#define I_SENSE_TIMER_TYPE htim6
+#define I_SENSE_ADC_TYPE hadc2
+extern TIM_HandleTypeDef I_SENSE_TIMER_TYPE;
+extern ADC_HandleTypeDef I_SENSE_ADC_TYPE;
 
 #define SPI_EN 1
 #if SPI_EN == 0
@@ -35,8 +42,9 @@ enum DEVICE_CONNECTIONS{
 	DEVCON_Seg6		= BIT6,
 	DEVCON_Seg7		= BIT7,
 	DEVCON_Seg8		= BIT8,
-	DEVCON_Cient 	= BIT9,
+	DEVCON_Client 	= BIT9,
 	DEVCON_RCB 		= BIT10,
+	DEVCON_Charger  = BIT11
 };
 //========================
 
@@ -116,6 +124,16 @@ typedef enum DCC_CELLS{
 	DCC_CELL7 = LTC_CELL9,
 }DCC_CELLS;
 
+enum STATUS{
+	STATUS_STARTUP,
+	STATUS_DISCHARGE_RDY,
+	STATUS_CHARGE_RDY,
+	STATUS_DISCHARGE,
+	STATUS_CHARGE,
+	STATUS_FAULT,
+	STATUS_SHUTDOWN
+};
+
 typedef struct BMS_Data_Struct
 {
 	uint8_t chip_config[IC_N][6];
@@ -129,12 +147,60 @@ typedef struct BMS_Data_Struct
 	uint16_t maximum_cell_voltage;
 	uint16_t maximum_cell_id;
 	uint16_t minimum_temperature;
+	uint16_t maximum_balance_temperature;
 	uint16_t maximum_temperature;
+
+	uint8_t status;
+
 	uint8_t current_mux;
 	uint8_t spi_free;
 	uint16_t auto_balance_wait_period;
+
+	int32_t current_ch1;
+	int32_t current_ch2;
+
+	uint8_t fan_pwm;
+
+	uint8_t SOC;
+	uint32_t pack_voltage;
+	int16_t pack_current;
+
+	MOVING_AVERAGE average_pack_current;
+
+	int16_t maximum_current_charge;
+	int16_t maximum_current_discharge;
+
+	uint8_t latches;
+
+	uint8_t ts_active;
+
+	uint8_t n_ic_connected;
+
 }BMS_Data_Struct;
 extern BMS_Data_Struct BMS_Data;
+
+enum LATCHES{
+	IND_AMS_LATCH = BIT1,
+	IND_AMS_OKAY = BIT2,
+	IND_IMD_LATCH = BIT3,
+	IND_IMD_OKAY = BIT4
+};
+
+enum CHARGER_STATES{
+	CHGR_HARDWARE_FAULT = BIT1,
+	CHGR_TEMPERATURE_FAULT = BIT2,
+	CHGR_INPUT_FAULT = BIT3,
+	CHGR_BATTERY_FAULT = BIT4,
+	CHGR_COMMS_FAULT = BIT5
+};
+
+typedef struct CHARGER_STATE{
+	uint8_t state;
+	uint32_t voltage;
+	uint32_t current;
+	int8_t temperature;
+}CHARGER_STATE;
+extern CHARGER_STATE hchgr;
 
 typedef enum LTC_GPIO{
 	LTC_GPIO1 = CFGR0_GPIO1,
@@ -224,5 +290,26 @@ void LTC68041_ConfigSend(uint8_t ic_n);
 
 void GrabMinMaxCellVoltage();
 void GrabMinMaxSegmentTemperature();
+void GrabMaxBalanceTemperature();
 
+uint8_t Status_Check(uint8_t status);
+uint8_t Status_Set(uint8_t status);
+
+//Current values stored in BMS_Data structure for convenient access.
+extern uint8_t overcurrent_check;
+
+void Start_CurrentADC();
+void Finish_CurrentADC();
+
+void BMS_Okay(uint8_t en);
+
+void SoftShutdown();
+void HardShutdown();
+
+extern MOVING_AVERAGE current_offset_ch1;
+extern MOVING_AVERAGE current_offset_ch2;
+extern MOVING_AVERAGE current_ave_ch1;
+extern MOVING_AVERAGE current_ave_ch2;
+extern uint8_t current_calibrated;
+void CalibrateCurrentSensor();
 #endif /* INC_CONTROL_H_ */

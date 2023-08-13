@@ -170,9 +170,9 @@ void LTC6804_adcv()
   //4
   //SPI_HANDLE.Instance->CR1 |= SPI_CR1_SSI;
   //CLEAR_BIT(SPI_HANDLE.Instance->CR1, SPI_CR1_SSI);
-  OUTPUT_RESET(OUT_NSS);
+  SPI_START();
   SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
-  OUTPUT_SET(OUT_NSS);
+  SPI_END();
   //spi_write_array(4,cmd);
   //SPI_HANDLE.Instance->CR1 |= SPI_CR1_SSI;
 
@@ -217,9 +217,9 @@ void LTC6804_adax()
   cmd[3] = (uint8_t)(cmd_pec);
 
   wakeup_idle(); //This will guarantee that the LTC6804 isoSPI port is awake. This command can be removed.
-  OUTPUT_RESET(OUT_NSS);
+  SPI_START();
   SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
-  OUTPUT_SET(OUT_NSS);
+  SPI_END();
 
 }
 /*
@@ -454,10 +454,10 @@ void LTC6804_rdcv_reg(uint8_t reg, //Determines which cell voltage register is r
 	  data[i]=0;
   }
   //4
-  OUTPUT_RESET(OUT_NSS);
+  SPI_START();
   SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
   SPI_(HAL_SPI_Receive(&SPI_HANDLE, data, (REG_LEN*total_ic), 1000));
-  OUTPUT_SET(OUT_NSS);
+  SPI_END();
 }
 /*
   LTC6804_rdcv_reg Function Process:
@@ -674,16 +674,16 @@ void LTC6804_rdaux_reg(uint8_t reg, //Determines which GPIO voltage register is 
   cmd[3] = (uint8_t)(cmd_pec);
 
   //3
-  wakeup_idle (); //This will guarantee that the LTC6804 isoSPI port is awake, this command can be removed.
+  wakeup_idle(); //This will guarantee that the LTC6804 isoSPI port is awake, this command can be removed.
   //4
   for(int i = 0;i<(REG_LEN*total_ic);i++)
   {
 	  data[i]=0;
   }
-  OUTPUT_RESET(OUT_NSS);
+  SPI_START();
   SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
   SPI_(HAL_SPI_Receive(&SPI_HANDLE, data, (REG_LEN*total_ic), 1000));
-  OUTPUT_SET(OUT_NSS);
+  SPI_END();
 }
 /*
   LTC6804_rdaux_reg Function Process:
@@ -726,9 +726,9 @@ void LTC6804_clrcell()
   wakeup_idle (); //This will guarantee that the LTC6804 isoSPI port is awake. This command can be removed.
 
   //4
-  OUTPUT_RESET(OUT_NSS);
+  SPI_START();
   SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
-  OUTPUT_SET(OUT_NSS);
+  SPI_END();
 }
 /*
   LTC6804_clrcell Function sequence:
@@ -772,9 +772,9 @@ void LTC6804_clraux()
   //3
   wakeup_idle (); //This will guarantee that the LTC6804 isoSPI port is awake.This command can be removed.
   //4
-  OUTPUT_RESET(OUT_NSS);
+  SPI_START();
   SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
-  OUTPUT_SET(OUT_NSS);
+  SPI_END();
 }
 /*
   LTC6804_clraux Function sequence:
@@ -858,9 +858,9 @@ void LTC6804_wrcfg(uint8_t total_ic, //The number of ICs being written to
   //4
   wakeup_idle ();                                 //This will guarantee that the LTC6804 isoSPI port is awake.This command can be removed.
   //5
-  OUTPUT_RESET(OUT_NSS);
+  SPI_START();
   SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd_buffer, CMD_LEN, 1000));
-  OUTPUT_SET(OUT_NSS);
+  SPI_END();
   //free(cmd);
 }
 /*
@@ -925,10 +925,10 @@ int8_t LTC6804_rdcfg(uint8_t total_ic, //Number of ICs in the system
   //2
   wakeup_idle (); //This will guarantee that the LTC6804 isoSPI port is awake. This command can be removed.
 //3
-  OUTPUT_RESET(OUT_NSS);
+  SPI_START();
   SPI_(HAL_SPI_Transmit(&SPI_HANDLE, cmd, 4, 1000));
   SPI_(HAL_SPI_Receive(&SPI_HANDLE, rx_data, (BYTES_IN_REG*total_ic), 1000));
-  OUTPUT_SET(OUT_NSS);
+  SPI_END();
 
   for (uint8_t current_ic = 0; current_ic < total_ic; current_ic++)       //executes for each LTC6804 in the daisy chain and packs the data
   {
@@ -1012,4 +1012,13 @@ uint16_t pec15_calc(uint8_t len, //Number of bytes that will be used to calculat
   return(remainder*2);//The CRC15 has a 0 in the LSB so the remainder must be multiplied by 2
 }
 
-
+void SPI_START(){
+	OUTPUT_RESET(OUT_NSS);
+	  HAL_TIM_Base_Stop_IT(&SOFTCLK_TIMER_TYPE);
+	  //HAL_NVIC_DisableIRQ(EXTI4_IRQn);
+}
+void SPI_END(){
+	//HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+	  HAL_TIM_Base_Start_IT(&SOFTCLK_TIMER_TYPE);
+	  OUTPUT_SET(OUT_NSS);
+}

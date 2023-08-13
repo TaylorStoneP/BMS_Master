@@ -7,6 +7,7 @@
 #include "can_utils.h"
 #include "config_loader.h"
 #include "control.h"
+#include "fault_handler.h"
 #if USB_EN == True
 #include "usbd_cdc_if.h"
 #include "usb_device.h"
@@ -94,16 +95,58 @@ void CAN_RX_Handler(){
 		break;
 
 	case 0x1C00:
-		BITSET(DeviceConnections,DEVCON_Cient);
+		BITSET(DeviceConnections,DEVCON_Client);
 		OUTPUT_SET(OUT_LED_WARN);
 		ScheduleTask(SCH_TIMEOUT_Client, 1000, True,0);
+		break;
+	case 0x18FF50E5:
+		BITSET(DeviceConnections, DEVCON_Charger);
+		hchgr.voltage = BYTECONCAT16(CAN_RX_Queue[CAN_RX_Queue_Count].data[0], CAN_RX_Queue[CAN_RX_Queue_Count].data[1]);
+		hchgr.current = BYTECONCAT16(CAN_RX_Queue[CAN_RX_Queue_Count].data[2], CAN_RX_Queue[CAN_RX_Queue_Count].data[3]);
+		hchgr.state = CAN_RX_Queue[CAN_RX_Queue_Count].data[4];
+		hchgr.temperature = CAN_RX_Queue[CAN_RX_Queue_Count].data[5];
+
+		if(hchgr.state){
+			FaultRaise(FAULT_C2_CHARGER_FAULT, FaultInfoBuff);
+		}else{
+			FaultLower(FAULT_C2_CHARGER_FAULT);
+		}
+		FaultLower(FAULT_D2_DEVCON_CHARGER);
+		ScheduleTask(SCH_TIMEOUT_Charger, 2000, True,0);
+		break;
+	case 0x00000A84:
+		BITSET(DeviceConnections, DEVCON_RCB);
+		if(CAN_RX_Queue[CAN_RX_Queue_Count].data[0]==0x55){
+			BMS_Data.ts_active = True;
+			if(BITCHECK(DeviceConnections, DEVCON_Charger)){
+				if(Status_Check(STATUS_CHARGE_RDY)){
+					Status_Set(STATUS_CHARGE);
+				}
+			}else{
+				if(Status_Check(STATUS_DISCHARGE_RDY)){
+					Status_Set(STATUS_DISCHARGE);
+				}
+			}
+		}else{
+			if(BMS_Data.ts_active == True){
+				if(BITCHECK(DeviceConnections, DEVCON_Charger)){
+					Status_Set(STATUS_CHARGE_RDY);
+				}else{
+					Status_Set(STATUS_DISCHARGE_RDY);
+				}
+			}
+			BMS_Data.ts_active = False;
+
+		}
+		FaultLower(FAULT_D1_DEVCON_RCB);
+		ScheduleTask(SCH_TIMEOUT_RCB, 1500, True,0);
 		break;
 	case 0x1C38:
 		{
 		uint16_t cell_id = (CAN_RX_Queue[CAN_RX_Queue_Count].data[0]<<8) + CAN_RX_Queue[CAN_RX_Queue_Count].data[1];
-		//if(!CFG_Main[CFGID_BalancingEnable]){
-			BMS_Data.DCC[cell_id/N_CELLS_PER_SEG][cell_id%N_CELLS_PER_SEG] = CAN_RX_Queue[CAN_RX_Queue_Count].data[2];
-    	//}
+			if(!CFG_Main[CFGID_BalancingEnable]){
+				BMS_Data.DCC[cell_id/CELLS_PER_SEG][cell_id%CELLS_PER_SEG] = CAN_RX_Queue[CAN_RX_Queue_Count].data[2];
+			}
 		}
 		break;
     default:
@@ -170,6 +213,19 @@ void CAN_UTIL_Transmit(CAN_HandleTypeDef *hcan, CAN_TX message){
 	TxHeader.ExtId = CAN_Messages[message].id;
 
 	HAL_CAN_AddTxMessage(hcan, &TxHeader, CAN_Messages[message].data, &Tx_Mailbox);
+	CAN_UTIL_LED_Code(HAL_GPIO_TogglePin(CAN_UTIL_LED_Port, CAN_UTIL_LED_Pin));
+}
+
+void CAN_UTIL_TransmitMessage(CAN_HandleTypeDef *hcan, CAN_Message message){
+	CAN_TxHeaderTypeDef TxHeader;
+	uint32_t Tx_Mailbox;
+
+	TxHeader.DLC = message.length;
+	TxHeader.IDE = CAN_ID_EXT;
+	TxHeader.RTR = CAN_RTR_DATA;
+	TxHeader.ExtId = message.id;
+
+	HAL_CAN_AddTxMessage(hcan, &TxHeader, message.data, &Tx_Mailbox);
 	CAN_UTIL_LED_Code(HAL_GPIO_TogglePin(CAN_UTIL_LED_Port, CAN_UTIL_LED_Pin));
 }
 
@@ -322,15 +378,17 @@ uint8_t ascii_hex_to_int(char hex)
 }
 
 void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef * hcan){
-	if(CFG_Reset){
-		HAL_NVIC_SystemReset();
-	}
+
 }
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan){
     HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &CAN_RxHeader, CAN_Rx_Message);
 	if(hcan == &hcan1){
-	    CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.ExtId;
+		if(CAN_RxHeader.IDE==CAN_ID_EXT){
+			CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.ExtId;
+		}else{
+			CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.StdId;
+		}
 	    CAN_RX_Queue[CAN_RX_Queue_Count].length = CAN_RxHeader.DLC;
 	    CAN_RX_Queue[CAN_RX_Queue_Count].data[0] = CAN_Rx_Message[0];
 	    CAN_RX_Queue[CAN_RX_Queue_Count].data[1] = CAN_Rx_Message[1];
@@ -346,7 +404,11 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan){
 
 #if N_CANBUS == 2
 	if(hcan == &hcan2){
-	    CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.ExtId;
+		if(CAN_RxHeader.IDE==CAN_ID_EXT){
+			CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.ExtId;
+		}else{
+			CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.StdId;
+		}
 	    CAN_RX_Queue[CAN_RX_Queue_Count].length = CAN_RxHeader.DLC;
 	    CAN_RX_Queue[CAN_RX_Queue_Count].data[0] = CAN_Rx_Message[0];
 	    CAN_RX_Queue[CAN_RX_Queue_Count].data[1] = CAN_Rx_Message[1];
@@ -356,6 +418,51 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan){
 	    CAN_RX_Queue[CAN_RX_Queue_Count].data[5] = CAN_Rx_Message[5];
 	    CAN_RX_Queue[CAN_RX_Queue_Count].data[6] = CAN_Rx_Message[6];
 	    CAN_RX_Queue[CAN_RX_Queue_Count].data[7] = CAN_Rx_Message[7];
+	    CAN_UTIL_TransmitMessage(&hcan1, CAN_RX_Queue[CAN_RX_Queue_Count]);
+	    CAN_RX_Queue_Count++;
+	}
+#endif
+
+}
+
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef * hcan){
+    HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &CAN_RxHeader, CAN_Rx_Message);
+	if(hcan == &hcan1){
+		if(CAN_RxHeader.IDE==CAN_ID_EXT){
+			CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.ExtId;
+		}else{
+			CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.StdId;
+		}
+	    CAN_RX_Queue[CAN_RX_Queue_Count].length = CAN_RxHeader.DLC;
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[0] = CAN_Rx_Message[0];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[1] = CAN_Rx_Message[1];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[2] = CAN_Rx_Message[2];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[3] = CAN_Rx_Message[3];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[4] = CAN_Rx_Message[4];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[5] = CAN_Rx_Message[5];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[6] = CAN_Rx_Message[6];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[7] = CAN_Rx_Message[7];
+	    CAN_RX_Queue_Count++;
+
+	}
+
+#if N_CANBUS == 2
+	if(hcan == &hcan2){
+		if(CAN_RxHeader.IDE==CAN_ID_EXT){
+			CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.ExtId;
+		}else{
+			CAN_RX_Queue[CAN_RX_Queue_Count].id = CAN_RxHeader.StdId;
+		}
+	    CAN_RX_Queue[CAN_RX_Queue_Count].length = CAN_RxHeader.DLC;
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[0] = CAN_Rx_Message[0];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[1] = CAN_Rx_Message[1];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[2] = CAN_Rx_Message[2];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[3] = CAN_Rx_Message[3];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[4] = CAN_Rx_Message[4];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[5] = CAN_Rx_Message[5];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[6] = CAN_Rx_Message[6];
+	    CAN_RX_Queue[CAN_RX_Queue_Count].data[7] = CAN_Rx_Message[7];
+	    CAN_UTIL_TransmitMessage(&hcan1, CAN_RX_Queue[CAN_RX_Queue_Count]);
 	    CAN_RX_Queue_Count++;
 	}
 #endif

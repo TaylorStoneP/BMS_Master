@@ -11,7 +11,7 @@
 
 #define USB_EN False
 
-#define N_CANBUS 1
+#define N_CANBUS 2
 
 extern CAN_HandleTypeDef hcan1;
 #if N_CANBUS == 2
@@ -26,6 +26,7 @@ typedef struct{
 
 typedef enum CAN_TX{
 	CAN_TX_Cells,
+	CAN_TX_Battery,
 	CAN_TX_Temperature_Main,
 	CAN_TX_Temperature_Segment,
 	CAN_TX_Fan,
@@ -37,8 +38,12 @@ typedef enum CAN_TX{
 	CAN_TX_KeepAlive,
 	CAN_TX_WarnInfo,
 	CAN_TX_BalanceResponse,
-	CAN_TX_FaultsAB,
-	CAN_TX_FaultsCD,
+	CAN_TX_FaultsA,
+	CAN_TX_FaultsB,
+	CAN_TX_FaultsC,
+	CAN_TX_FaultsD,
+	CAN_TX_Charger,
+	CAN_TX_Current,
 	CAN_TX_N
 }CAN_TX;
 
@@ -60,6 +65,7 @@ void CAN_UTIL_USB_Handler(uint8_t * buffer, uint8_t len);
 #endif
 
 void CAN_UTIL_Transmit(CAN_HandleTypeDef *hcan, CAN_TX message);
+void CAN_UTIL_TransmitMessage(CAN_HandleTypeDef *hcan, CAN_Message message);
 void CAN_UTIL_SetID(CAN_TX message, uint32_t id);
 void CAN_UTIL_SetLength(CAN_TX message, uint8_t length);
 void CAN_UTIL_Setup(CAN_TX message, uint32_t id, uint8_t length);

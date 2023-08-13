@@ -7,37 +7,54 @@
 
 
 #include "state_of_charge.h"
+#include "fault_handler.h"
 
-extern uint32_t SOC_OV_LUT[SEGMENT_N][N_OV_SAMPLES];
-DiscreteIntegratorHandle current_integrator;
-uint32_t segment_max_charge[SEGMENT_N];
-uint32_t segment_initial_charge_lost[SEGMENT_N];
+uint32_t SOC_OV_curve[N_OV_SAMPLES] = {25000, 29755, 31796, 32849, 33836, 34758, 35614, 36338, 37194, 37948, 42000};
+int32_t battery_initial_charge_lost;
 
-void CurrentUpdate(int32_t current){
-	Integrate(current_integrator, current);
+DiscreteTimeIntegratorHandle current_integrator;
+int32_t battery_max_charge = (2930*6)/10*3600;
+DiscreteDerivativeHandle voltage_roc;
 
-
+void SOC_Prediction(){
+	IntegrateTime(&current_integrator, 50, BMS_Data.pack_current);
+	FaultRaise(FAULT_A16_VOLTAGE_FLUCTUATION, FaultInfoBuff);
+	if((battery_initial_charge_lost+current_integrator.value) > battery_max_charge){
+		BMS_Data.SOC = 0;
+		battery_initial_charge_lost = battery_max_charge;
+		current_integrator.value = 0;
+	}else if((battery_initial_charge_lost+current_integrator.value) < 0){
+		BMS_Data.SOC = 100*2;
+		battery_initial_charge_lost = 0;
+		current_integrator.value = 0;
+	}else{
+		BMS_Data.SOC = (battery_max_charge - battery_initial_charge_lost - current_integrator.value)*200/battery_max_charge;
+	}
 }
 
-void SetupInitialCharges(uint32_t segment_voltages[SEGMENT_N]){
-	for(int seg = 0;seg<SEGMENT_N;seg++){
-		for(int i = 0;i<N_OV_SAMPLES;i++){
-			if(segment_voltages[seg]<SOC_OV_LUT[seg][i]){
-				// ADD CHECK FOR SOC_OV_LUT OUT OF RANGE***
-				// ADD CHECK FOR SOC_OV_LUT NOT FOUND***
-				//(v-a)/(b-a) = normalised value between soc states.
-				/*
-				 * SOC ranges from 0 -> 100 in units of 0.01% but lut increments in 0.5% units. therefore, * by 100 we get from 0 -> 10000
-				 * with units of 1 representing 0.01%. There are 50 divisions of 0.01% in 0.5% so multiplying our normalised ov by 50 will
-				 * give us our SoC offset with the correct precision and units.
-				 *
-				 * Multiplying 50 by (i-1) gives us our soc position in loop.
-				 */
-
-				uint32_t normalised_ov = (50*(segment_voltages[seg]-SOC_OV_LUT[seg][i-1]))/(SOC_OV_LUT[seg][i]-SOC_OV_LUT[seg][i-1]);
-				uint32_t initial_soc = 50*(i-1) + normalised_ov;
-				segment_initial_charge_lost[seg] = (10000-initial_soc)*segment_max_charge[seg]/10000;
-			}
+void SOC_Correction(){
+	FaultLower(FAULT_A16_VOLTAGE_FLUCTUATION);
+	current_integrator.value = 0;
+	uint8_t lower_index = 0;
+	for(uint8_t index = 0;index<N_OV_SAMPLES-1;index++){
+		if((BMS_Data.minimum_cell_voltage>SOC_OV_curve[index])&&(BMS_Data.minimum_cell_voltage<SOC_OV_curve[index+1])){
+			lower_index = index;
+			break;
+		}
+		if(index == (N_OV_SAMPLES-2)){
+			BMS_Data.SOC = 100*2;
+			battery_initial_charge_lost = 0;
+			return;
 		}
 	}
+	//SOC ranging between 0 - 10000.
+	int32_t state_of_charge = lerp(lower_index*1000, (lower_index+1)*1000,normalise(SOC_OV_curve[lower_index], SOC_OV_curve[lower_index+1], BMS_Data.minimum_cell_voltage, 1000),1000);
+	//SOC between 0 - 1
+	float state_of_charge_float = (float)state_of_charge/10000.0f;
+	//Initial charge of the battery in units of 10mAh
+	uint32_t battery_initial_charge = state_of_charge_float*battery_max_charge;
+	battery_initial_charge_lost = battery_max_charge - battery_initial_charge;
+
+	BMS_Data.SOC = (battery_max_charge - battery_initial_charge_lost)*200/battery_max_charge;
+
 }

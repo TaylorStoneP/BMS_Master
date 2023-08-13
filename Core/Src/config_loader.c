@@ -20,6 +20,10 @@ void InitialiseConfigurationSequence(){
 	}
 	if(CFGE){ConfigurationErrorHandler();return;}
 
+	HAL_TIM_Base_Stop_IT(&SOFTCLK_TIMER_TYPE);
+	HAL_TIM_Base_Stop(&STOPCLK_TIMER_TYPE);
+	//DisableIRQ();
+
 	CFGFS = CFGFS_Config;
 	CFG_Info[0] = CFGFS;
 	Flash_Write_Data(SECTOR5, CFG_Info, 1);
@@ -39,11 +43,6 @@ void InitialiseConfigurationSequence(){
 	for(int task = 0;task<SCHEDULE_N;task++){
 		ScheduleTask(task, 0xFFFFFFFF, False,0);
 	}
-
-
-
-	HAL_TIM_Base_Stop_IT(&SOFTCLK_TIMER_TYPE);
-	HAL_TIM_Base_Stop(&STOPCLK_TIMER_TYPE);
 
 	//When Ready...
 	CAN_UTIL_SetByte(CAN_TX_Configuration, 0, 1);
@@ -131,7 +130,6 @@ void ConfigurationSequenceComplete(){
 	CFG_Info[0] = CFGFS;
 	Flash_Write_Data(SECTOR5, CFG_Info, 1);
 
-	CFG_Reset = True;
 	CAN_UTIL_SetByte(CAN_TX_Configuration, 0, 2);
 	CAN_UTIL_SetByte(CAN_TX_Configuration, 1, 0);
 	CAN_UTIL_SetByte(CAN_TX_Configuration, 2, 0);
@@ -141,6 +139,8 @@ void ConfigurationSequenceComplete(){
 	CAN_UTIL_SetByte(CAN_TX_Configuration, 6, 0);
 	CAN_UTIL_SetByte(CAN_TX_Configuration, 7, 0);
 	CAN_UTIL_Transmit(&hcan1, CAN_TX_Configuration);
+	CFG_Reset = True;
+
 }
 
 void ConfigurationErrorHandler(){
@@ -164,6 +164,11 @@ void InitialiseConfigurationSendSequence(){
 	}
 	if(CFGE){ConfigurationErrorHandler();return;}
 
+	HAL_TIM_Base_Stop_IT(&SOFTCLK_TIMER_TYPE);
+	HAL_TIM_Base_Stop(&STOPCLK_TIMER_TYPE);
+
+	//DisableIRQ();
+
 	CFGTXS = CFGTXS_Init;
 
 	//Init Ack
@@ -180,8 +185,6 @@ void InitialiseConfigurationSendSequence(){
 
 	//Prepare
 	//
-	HAL_TIM_Base_Stop_IT(&SOFTCLK_TIMER_TYPE);
-	HAL_TIM_Base_Stop(&STOPCLK_TIMER_TYPE);
 
 	CFGTXS = CFGTXS_Sending;
 	//Ready Signal
@@ -219,4 +222,5 @@ void ConfigurationSequenceSendComplete(){
 	CFG_Progress_ID=0;
 	HAL_TIM_Base_Start_IT(&SOFTCLK_TIMER_TYPE);
 	HAL_TIM_Base_Start(&STOPCLK_TIMER_TYPE);
+	//EnableIRQ();
 }

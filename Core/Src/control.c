@@ -8,8 +8,12 @@
 #include "control.h"
 #include "stm32_utils.h"
 #include "main.h"
+#include "fault_handler.h"
+#include "config_loader.h"
+#include "state_of_charge.h"
 
 BMS_Data_Struct BMS_Data;
+CHARGER_STATE hchgr;
 
 uint32_t DeviceConnections;
 
@@ -86,6 +90,26 @@ void GrabMinMaxCellVoltage(){
 	BMS_Data.maximum_cell_id = maximum_index;
 	BMS_Data.minimum_cell_voltage = minimum;
 	BMS_Data.maximum_cell_voltage = maximum;
+
+	if(minimum<CFG_Main[CFGID_MinimumCellVoltage]){
+		FaultRaise(FAULT_B2_LOW_CELL_VOLTAGE, FaultInfoBuff);
+	}else{
+		FaultLower(FAULT_B2_LOW_CELL_VOLTAGE);
+	}
+
+	if(maximum>CFG_Main[CFGID_MaximumCellVoltage]){
+		FaultRaise(FAULT_B3_HIGH_CELL_VOLTAGE, FaultInfoBuff);
+	}else{
+		FaultLower(FAULT_B3_HIGH_CELL_VOLTAGE);
+	}
+
+	if(maximum>CFG_Main[CFGID_MaximumCellVoltageCharging]){
+		FaultRaise(FAULT_B12_HIGH_VOLTAGE_CHARGING, FaultInfoBuff);
+	}else{
+		FaultLower(FAULT_B12_HIGH_VOLTAGE_CHARGING);
+	}
+
+
 	return;
 }
 
@@ -97,7 +121,7 @@ void GrabMinMaxSegmentTemperature(){
 	for(int segment = 0; segment < SEGMENT_N;segment++){
 		seg_min = 0xFFFF;
 		seg_max = 0;
-		for(int temp = 0;temp<22;temp++){
+		for(int temp = 0;temp<21;temp++){
 			if(BMS_Data.segment_temperatures[segment][temp]>maximum){
 				maximum = BMS_Data.segment_temperatures[segment][temp];
 			}
@@ -117,5 +141,170 @@ void GrabMinMaxSegmentTemperature(){
 	BMS_Data.maximum_temperature = maximum;
 	BMS_Data.minimum_temperature = minimum;
 	return;
+}
+
+void GrabMaxBalanceTemperature(){
+	uint16_t maximum = 0;
+	for(int segment = 0; segment < SEGMENT_N;segment++){
+		for(int temp = 21;temp<22;temp++){
+			if(BMS_Data.segment_temperatures[segment][temp]>maximum){
+				maximum = BMS_Data.segment_temperatures[segment][temp];
+			}
+		}
+	}
+	BMS_Data.maximum_balance_temperature = maximum;
+	return;
+}
+
+uint8_t Status_Check(uint8_t status){
+	if(BMS_Data.status == status){
+		return True;
+	}else{
+		return False;
+	}
+}
+uint8_t Status_Set(uint8_t status){
+	if(Status_Check(STATUS_SHUTDOWN)){
+		return 1;
+	}
+	switch(status){
+	case STATUS_STARTUP:
+		if(BMS_Data.status!=STATUS_STARTUP){
+			FaultRaise(FAULT_A3_INVALID_STATE_CHANGE, FaultInfoBuff);
+			return 1;
+		}
+		break;
+	case STATUS_CHARGE:
+		if(BMS_Data.status!=STATUS_CHARGE_RDY){
+			FaultRaise(FAULT_A3_INVALID_STATE_CHANGE, FaultInfoBuff);
+			return 1;
+		}
+		break;
+	case STATUS_DISCHARGE:
+		if(BMS_Data.status!=STATUS_DISCHARGE_RDY){
+			FaultRaise(FAULT_A3_INVALID_STATE_CHANGE, FaultInfoBuff);
+			return 1;
+		}
+		break;
+	}
+
+	BMS_Data.status = status;
+	return 0;
+}
+
+
+uint16_t I_SENSE_ADC_BUFFER[3] = {0};
+uint8_t I_SENSE_RUNNING = False;
+uint8_t I_SENSE_ADC_INDEX = 0;
+uint8_t overcurrent_check = False;
+
+void Start_CurrentADC(){
+	if(I_SENSE_RUNNING){
+		return;
+	}
+	I_SENSE_ADC_INDEX=0;
+	I_SENSE_RUNNING = True;
+	HAL_ADC_Start_DMA(&I_SENSE_ADC_TYPE,I_SENSE_ADC_BUFFER,3);
+}
+
+void Finish_CurrentADC(){
+	float CH1_read_V = I_SENSE_ADC_BUFFER[0]*3.3/4095;
+	float CH2_read_V = I_SENSE_ADC_BUFFER[1]*3.3/4095;
+	float VREF_read_V = I_SENSE_ADC_BUFFER[2]*3.3/4095;
+
+	float CH1 = ((CH1_read_V/VREF_read_V)*5.0f-2.5f)*1000/10*1.006f;
+	float CH2 = ((CH2_read_V/VREF_read_V)*5.0f-2.5f)*1000/40;
+
+	if(current_calibrated){
+		if(CH2<0.0f){
+			CH2*=1.006f;
+		}else{
+			CH2*=1.05f;
+		}
+	}
+
+	int32_t current_ch1 = (int32_t)(CH1*100);
+	int32_t current_ch2 = (int32_t)(CH2*100);
+
+	if(!current_calibrated){
+		MOVING_AVERAGE_Update(&current_offset_ch1, current_ch1);
+		MOVING_AVERAGE_Update(&current_offset_ch2, current_ch2);
+	}else{
+		current_ch1 -= current_offset_ch1.average;
+		current_ch2 -= current_offset_ch2.average;
+	}
+
+	MOVING_AVERAGE_Update(&current_ave_ch1, current_ch1);
+	MOVING_AVERAGE_Update(&current_ave_ch2, current_ch2);
+
+	BMS_Data.current_ch1 = current_ave_ch1.average;
+	BMS_Data.current_ch2 = current_ave_ch2.average;
+
+	if(CFG_Main[CFGID_CurrentSensorReversed]){
+		BMS_Data.current_ch1 = -BMS_Data.current_ch1;
+		BMS_Data.current_ch2 = -BMS_Data.current_ch2;
+	}
+
+	if((BMS_Data.current_ch2>(50*100)) || (BMS_Data.current_ch2<(-50*100))){
+		BMS_Data.pack_current = BMS_Data.current_ch1;
+	}else{
+		BMS_Data.pack_current = BMS_Data.current_ch2;
+	}
+
+	if(BITCHECK(DeviceConnections,DEVCON_Charger)){
+		if(BMS_Data.pack_current<(-((int32_t)CFG_Main[CFGID_MaximumChargeCurrent])*100)){
+			if(overcurrent_check==False){
+				ScheduleTask(SCH_CheckOvercurrent, 500, False, 0);
+				overcurrent_check=True;
+			}
+		}else{
+			FaultLower(FAULT_B13_HIGH_CURRENT_CHARGING);
+		}
+	}else{
+		if(BMS_Data.pack_current>(((int32_t)CFG_Main[CFGID_MaximumDischargeCurrent])*100)){
+			if(overcurrent_check==False){
+				ScheduleTask(SCH_CheckOvercurrent, 500, False, 0);
+				overcurrent_check=True;
+			}
+		}else{
+			FaultLower(FAULT_B14_HIGH_CURRENT_DISCHARGING);
+		}
+	}
+
+	I_SENSE_RUNNING = False;
+
+	if(BMS_Data.ts_active){
+		SOC_Prediction();
+	}
+}
+
+void BMS_Okay(uint8_t en){
+	if(en){
+		if(BITCHECK(DeviceConnections,DEVCON_Charger)){
+			Status_Set(STATUS_CHARGE_RDY);
+		}else{
+			Status_Set(STATUS_DISCHARGE_RDY);
+		}
+	}
+	HAL_GPIO_WritePin(AMS_OKAY_GPIO_Port, AMS_OKAY_Pin, en);
+
+}
+
+void SoftShutdown(){
+	BMS_Okay(False);
+	Status_Set(STATUS_FAULT);
+}
+void HardShutdown(){
+	BMS_Okay(False);
+	Status_Set(STATUS_SHUTDOWN);
+}
+
+MOVING_AVERAGE current_offset_ch1;
+MOVING_AVERAGE current_offset_ch2;
+MOVING_AVERAGE current_ave_ch1;
+MOVING_AVERAGE current_ave_ch2;
+uint8_t current_calibrated = False;
+void CalibrateCurrentSensor(){
+	current_calibrated = True;
 }
 

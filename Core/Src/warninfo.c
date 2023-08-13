@@ -30,7 +30,7 @@ void AddWarnInfo(uint8_t warntype, uint8_t* data){
 }
 
 void WarnInfoHandler(){
-	if(!BITCHECK(DeviceConnections, DEVCON_Cient)){return;}
+	if(!BITCHECK(DeviceConnections, DEVCON_Client)){return;}
 	if(WarnInfoQueue_Count==0){return;}
 
 	WarnInfoQueue_Count--;

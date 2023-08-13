@@ -210,4 +210,7 @@ void wakeup_idle();
 void wakeup_sleep();
 
 uint16_t pec15_calc(uint8_t len, uint8_t *data);
+
+void SPI_START();
+void SPI_END();
 #endif

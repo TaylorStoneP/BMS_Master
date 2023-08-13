@@ -6,6 +6,8 @@
  */
 
 #include "fault_handler.h"
+#include "config_loader.h"
+#include "control.h"
 
 FaultHandler hfault;
 uint8_t FaultInfoBuff[4];
@@ -14,27 +16,56 @@ void FaultRaise(uint32_t FAULT_CODE, uint8_t info_in[4]){
 	uint16_t fault = FAULT_CODE&0xFFFF;
 	uint8_t index = BitToIndex(fault);
 
+
 	switch(FAULT_CODE & 0xFFFF0000){
 	case FAULT_A:
 		BITSET(hfault.faultsA.faults,fault);
+		if(!BITCHECK(CFG_Main[CFGID_FaultcodeFatalA],fault)){
+			if(BITCHECK(CFG_Main[CFGID_FaultcodeResettableA],fault)){
+				SoftShutdown();
+			}else{
+				HardShutdown();
+			}
+		}
 		for(int i = 0;i<4;i++){
 			hfault.faultsA.info[index][i] = info_in[i];
 		}
 		break;
 	case FAULT_B:
 		BITSET(hfault.faultsB.faults,fault);
+		if(!BITCHECK(CFG_Main[CFGID_FaultcodeFatalB],fault)){
+			if(BITCHECK(CFG_Main[CFGID_FaultcodeResettableB],fault)){
+				SoftShutdown();
+			}else{
+				HardShutdown();
+			}
+		}
 		for(int i = 0;i<4;i++){
 			hfault.faultsB.info[index][i] = info_in[i];
 		}
 		break;
 	case FAULT_C:
 		BITSET(hfault.faultsC.faults,fault);
+		if(!BITCHECK(CFG_Main[CFGID_FaultcodeFatalC],fault)){
+			if(BITCHECK(CFG_Main[CFGID_FaultcodeResettableC],fault)){
+				SoftShutdown();
+			}else{
+				HardShutdown();
+			}
+		}
 		for(int i = 0;i<4;i++){
 			hfault.faultsC.info[index][i] = info_in[i];
 		}
 		break;
 	case FAULT_D:
 		BITSET(hfault.faultsD.faults,fault);
+		if(!BITCHECK(CFG_Main[CFGID_FaultcodeFatalD],fault)){
+			if(BITCHECK(CFG_Main[CFGID_FaultcodeResettableD],fault)){
+				SoftShutdown();
+			}else{
+				HardShutdown();
+			}
+		}
 		for(int i = 0;i<4;i++){
 			hfault.faultsD.info[index][i] = info_in[i];
 		}
@@ -42,6 +73,9 @@ void FaultRaise(uint32_t FAULT_CODE, uint8_t info_in[4]){
 	}
 }
 void FaultLower(uint32_t FAULT_CODE){
+	if(Status_Check(STATUS_SHUTDOWN)){
+		return;
+	}
 	uint16_t fault = FAULT_CODE&0xFFFF;
 	uint8_t index = BitToIndex(fault);
 

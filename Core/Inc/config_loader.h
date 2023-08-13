@@ -49,6 +49,18 @@ enum CFG_DATA_ID{
     CFGID_BalancingEnable,
     CFGID_BalancingAutoTimingEnable,
     CFGID_BalancingMaximumTemperature,
+	CFGID_FaultcodeResettableA,
+	CFGID_FaultcodeResettableB,
+	CFGID_FaultcodeResettableC,
+	CFGID_FaultcodeResettableD,
+	CFGID_CurrentSensorReversed,
+	CFGID_MinCurrentCharging,
+	CFGID_VoltageDerateStartCharging,
+	CFGID_FanOverrideEnable,
+	CFGID_FanOverrideDC,
+	CFGID_MinimumVoltageDischarge,
+	CFGID_BatteryImpedance,
+	CFGID_MinimumPackVoltage,
     CFGID_N
 };
 

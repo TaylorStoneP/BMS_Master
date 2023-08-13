@@ -46,7 +46,6 @@ typedef enum PIN_UTIL{
 	OUT_LED_INDICATOR 	= LED_IND_Pin + (((uint32_t)LED_IND_GPIO_Port&0xFFFF)<<16),
 	OUT_LED_CAN 		= LED_CAN_Pin + (((uint32_t)LED_CAN_GPIO_Port&0xFFFF)<<16),
 	OUT_LED_WARN 		= LED_WARN_Pin + (((uint32_t)LED_WARN_GPIO_Port&0xFFFF)<<16),
-	OUT_LED_NUCLEO 		= LED_NUCLEO_Pin + (((uint32_t)LED_NUCLEO_GPIO_Port&0xFFFF)<<16),
 	OUT_SPI_SLOW 		= SPI_SLOW_Pin + (((uint32_t)SPI_SLOW_GPIO_Port&0xFFFF)<<16),
 	OUT_SPI_MASTER 		= SPI_MSTR_Pin + (((uint32_t)SPI_MSTR_GPIO_Port&0xFFFF)<<16),
 	OUT_SPI_POL 		= SPI_POL_Pin + (((uint32_t)SPI_POL_GPIO_Port&0xFFFF)<<16),
@@ -110,6 +109,8 @@ uint8_t BitToIndex(uint32_t bit);
 #define BYTE1(reg)	((reg>>8)&0xFF)
 #define BYTE0(reg) 	(reg&0xFF)
 
+#define BYTECONCAT16(high, low) (((high&0xFF)<<8)|(low&0xFF))
+
 typedef struct{
 	uint32_t time_ms;	
 	uint8_t flag;
@@ -137,16 +138,34 @@ typedef enum SCHEDULES{
 	SCH_CAN_TEMP_MAIN,
 	SCH_CAN_TEMP_SEG,
 	SCH_CAN_FAN,
-	SCH_CAN_FaultsAB,
-	SCH_CAN_FaultsCD,
+	SCH_CAN_FaultsA,
+	SCH_CAN_FaultsB,
+	SCH_CAN_FaultsC,
+	SCH_CAN_FaultsD,
 	SCH_BALANCE_Init,
 	SCH_BALANCE_Wait,
 	SCH_TEMP_INTERNAL_ADC,
 	SCH_CAN_TEMP_INTERNAL,
 	SCH_CAN_STOPCLK,
 	SCH_TIMEOUT_Client,
+	SCH_TIMEOUT_Charger,
+	SCH_TIMEOUT_RCB,
 	SCH_CAN_KeepAlive,
+	SCH_CAN_Battery,
 	SCH_WarnInfoHandle,
+	SCH_FAN_Update,
+	SCH_FAN_TEST,
+	SCH_FAULT_MONITOR,
+	SCH_CAN_Charger,
+	SCH_CAN_Current,
+	SCH_Current_Decision,
+	SCH_CheckLatches,
+	SCH_LogDOD,
+	SCH_VoltageROC,
+	SCH_CheckOvercurrent,
+	SCH_CalibrateCurrentSensor,
+	SCH_FaultLowerRCBLostCharging,
+	SCH_FaultLowerRCBLostDischarging,
 	SCHEDULE_N
 }SCHEDULES;
 extern Schedule ScheduleQueue[SCHEDULE_N];
@@ -188,6 +207,9 @@ uint32_t StopclkEnd(STOPCLOCKS stopclock);
 void delayu(unsigned int micro);
 //Specific Use (<1000us)
 int __delayu(unsigned int micro);
+
+void DisableIRQ();
+void EnableIRQ();
 
 #endif /* INC_STM32_UTILS_H_ */
 

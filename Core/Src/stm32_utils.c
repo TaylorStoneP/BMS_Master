@@ -144,3 +144,14 @@ int __delayu(unsigned int micro)
 	{}
 	return 1;
 }
+
+uint8_t prim;
+void DisableIRQ(){
+	prim = __get_PRIMASK();
+	__disable_irq();
+}
+void EnableIRQ(){
+	if(!prim){
+		__enable_irq();
+	}
+}
