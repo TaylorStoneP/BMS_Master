@@ -251,23 +251,61 @@ void Finish_CurrentADC(){
 		BMS_Data.pack_current = BMS_Data.current_ch2;
 	}
 
+//	if(BITCHECK(DeviceConnections,DEVCON_Charger)){
+//		if(BMS_Data.pack_current<(-((int32_t)CFG_Main[CFGID_MaximumChargeCurrent])*100)){
+//			if(overcurrent_check==False){
+//				ScheduleTask(SCH_CheckOvercurrent, 500, False, 0);
+//				overcurrent_check=True;
+//			}
+//		}else{
+//			FaultLower(FAULT_B13_HIGH_CURRENT_CHARGING);
+//		}
+//	}else{
+//		if(BMS_Data.pack_current>(((int32_t)CFG_Main[CFGID_MaximumDischargeCurrent])*100)){
+//			if(overcurrent_check==False){
+//				ScheduleTask(SCH_CheckOvercurrent, 500, False, 0);
+//				overcurrent_check=True;
+//			}
+//		}else{
+//			FaultLower(FAULT_B14_HIGH_CURRENT_DISCHARGING);
+//		}
+//	}
+
 	if(BITCHECK(DeviceConnections,DEVCON_Charger)){
 		if(BMS_Data.pack_current<(-((int32_t)CFG_Main[CFGID_MaximumChargeCurrent])*100)){
 			if(overcurrent_check==False){
-				ScheduleTask(SCH_CheckOvercurrent, 500, False, 0);
+				ScheduleTask(SCH_CheckOvercurrent, 250, False, 0);
 				overcurrent_check=True;
 			}
 		}else{
 			FaultLower(FAULT_B13_HIGH_CURRENT_CHARGING);
 		}
+
+		if(BMS_Data.pack_current>(((int32_t)CFG_Main[CFGID_MaximumChargeCurrent])*100)){
+			if(overcurrent_check==False){
+				ScheduleTask(SCH_CheckOvercurrent, 250, False, 0);
+				overcurrent_check=True;
+			}
+		}else{
+			FaultLower(FAULT_B15_REVERSE_CURRENT_CHARGING);
+		}
 	}else{
+
 		if(BMS_Data.pack_current>(((int32_t)CFG_Main[CFGID_MaximumDischargeCurrent])*100)){
 			if(overcurrent_check==False){
-				ScheduleTask(SCH_CheckOvercurrent, 500, False, 0);
+				ScheduleTask(SCH_CheckOvercurrent, 250, False, 0);
 				overcurrent_check=True;
 			}
 		}else{
 			FaultLower(FAULT_B14_HIGH_CURRENT_DISCHARGING);
+		}
+		if(BMS_Data.pack_current<(-((int32_t)CFG_Main[CFGID_MaximumDischargeCurrent])*100)){
+			if(overcurrent_check==False){
+				ScheduleTask(SCH_CheckOvercurrent, 250, False, 0);
+				overcurrent_check=True;
+			}
+		}else{
+			FaultLower(FAULT_B16_REVERSE_CURRENT_DISCHARGING);
 		}
 	}
 

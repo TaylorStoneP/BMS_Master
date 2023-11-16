@@ -33,6 +33,7 @@
 #include "fault_handler.h"
 #include "fan_control.h"
 #include "state_of_charge.h"
+#include "eeprom.h"
 //#include "mathops.h"
 /* USER CODE END Includes */
 
@@ -90,6 +91,7 @@ uint16_t fan_test_pwm;
 
 uint32_t flash_data[2];
 
+uint8_t eeprom_busy = False;
 
 /* USER CODE END PV */
 
@@ -690,25 +692,50 @@ void TaskScheduleHandler(){
 	}
 	SCHEDULE_HANDLE(SCH_CheckOvercurrent)
 		overcurrent_check=False;
+//		if(BITCHECK(DeviceConnections,DEVCON_Charger)){
+//			if(BMS_Data.pack_current<(-((int32_t)CFG_Main[CFGID_MaximumChargeCurrent])*100)){
+//				FaultRaise(FAULT_B13_HIGH_CURRENT_CHARGING, FaultInfoBuff);
+//			}
+//			if(BMS_Data.pack_current>(((int32_t)CFG_Main[CFGID_MaximumChargeCurrent])*100)){
+//				FaultRaise(FAULT_B15_REVERSE_CURRENT_CHARGING, FaultInfoBuff);
+//			}
+//		}else{
+//			if(BMS_Data.pack_current>(CFG_Main[CFGID_MaximumDischargeCurrent])*100){
+//				FaultRaise(FAULT_B14_HIGH_CURRENT_DISCHARGING, FaultInfoBuff);
+//			}
+//			if(BMS_Data.pack_current<(CFG_Main[CFGID_MaximumDischargeCurrent])*-100){
+//				FaultRaise(FAULT_B16_REVERSE_CURRENT_DISCHARGING, FaultInfoBuff);
+//			}
+//		}
 		if(BITCHECK(DeviceConnections,DEVCON_Charger)){
 			if(BMS_Data.pack_current<(-((int32_t)CFG_Main[CFGID_MaximumChargeCurrent])*100)){
 				FaultRaise(FAULT_B13_HIGH_CURRENT_CHARGING, FaultInfoBuff);
 			}
+			if(BMS_Data.pack_current>(((int32_t)CFG_Main[CFGID_MaximumChargeCurrent])*100)){
+				FaultRaise(FAULT_B15_REVERSE_CURRENT_CHARGING, FaultInfoBuff);
+			}
 		}else{
-			if(BMS_Data.pack_current>(CFG_Main[CFGID_MaximumDischargeCurrent])*100){
+
+			if(BMS_Data.pack_current>(((int32_t)CFG_Main[CFGID_MaximumDischargeCurrent])*100)){
 				FaultRaise(FAULT_B14_HIGH_CURRENT_DISCHARGING, FaultInfoBuff);
+			}
+			if(BMS_Data.pack_current<(-((int32_t)CFG_Main[CFGID_MaximumDischargeCurrent])*100)){
+				FaultRaise(FAULT_B16_REVERSE_CURRENT_DISCHARGING, FaultInfoBuff);
 			}
 		}
 	}
 	SCHEDULE_HANDLE(SCH_LogDOD)
 		//Check if SPI is free.
 		if(BMS_Data.spi_free==True){	//If SPI free, take control of SPI & start temperature config operation.
-			flash_data[0] = battery_initial_charge_lost + current_integrator.value;
-			flash_data[1] = (flash_data[1])+1;;
-			DisableIRQ();
-			Flash_Write_Data(SECTOR4, flash_data, 2);
+			//flash_data[0] = battery_initial_charge_lost + current_integrator.value;
+			//flash_data[1] = (flash_data[1])+1;;
+			//DisableIRQ();
+			//Flash_Write_Data(SECTOR4, flash_data, 2);
+			eeprom_busy = True;
+			EEPROM_WriteUInt32_BackedUp(0, 0, battery_initial_charge_lost + current_integrator.value);
+			eeprom_busy = False;
 			//HAL_Delay(20);
-			EnableIRQ();
+			//EnableIRQ();
 		}else{
 			ScheduleQueue[SCH_LogDOD].flag = True; //If SPI in-use, check again on next schedule cycle.
 		}
@@ -979,8 +1006,10 @@ int main(void)
   Flash_Read_Data(SECTOR6, CFG_Backup, N_CONFIG_WORDS);
   Flash_Read_Data(SECTOR5, CFG_Info, 1);
   {
-  Flash_Read_Data(SECTOR4, flash_data, 2);
-  battery_initial_charge_lost = flash_data[0];
+
+  //Flash_Read_Data(SECTOR4, flash_data, 2);
+  //battery_initial_charge_lost = flash_data[0];
+  battery_initial_charge_lost = EEPROM_ReadUInt32_BackedUp(0, 0);
   BMS_Data.SOC = (battery_max_charge - battery_initial_charge_lost)*200/battery_max_charge;
 
 
@@ -1356,7 +1385,7 @@ static void MX_I2C2_Init(void)
 
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
-  hi2c2.Init.ClockSpeed = 100000;
+  hi2c2.Init.ClockSpeed = 400000;
   hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c2.Init.OwnAddress1 = 0;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -1726,10 +1755,10 @@ static void MX_GPIO_Init(void)
                           |SPI_MSTR_Pin|SPI_SLOW_Pin|SPI_PHA_Pin|SPI_POL_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, SPI_LED_EN_Pin|SPI_NSS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, FLASH_WP_Pin|AMS_OKAY_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(AMS_OKAY_GPIO_Port, AMS_OKAY_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, SPI_LED_EN_Pin|SPI_NSS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : LED_CAN_Pin LED_WARN_Pin LED_IND_Pin LED_FAULT_Pin
                            SPI_MSTR_Pin SPI_SLOW_Pin SPI_PHA_Pin SPI_POL_Pin */
@@ -1758,6 +1787,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : FLASH_WP_Pin */
+  GPIO_InitStruct.Pin = FLASH_WP_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(FLASH_WP_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pins : SPI_LED_EN_Pin SPI_NSS_Pin */
   GPIO_InitStruct.Pin = SPI_LED_EN_Pin|SPI_NSS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -1783,6 +1819,8 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef * htim) {
+	if(eeprom_busy){return;}
+
 	if (htim == &SOFTCLK_TIMER_TYPE) {
 		TaskScheduleSoftClock_FlagSet();
 	}else if(htim == &I_SENSE_TIMER_TYPE){
@@ -1791,6 +1829,7 @@ void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef * htim) {
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc){
+	if(eeprom_busy){return;}
 //	if(hadc == &hadc1){
 //		//Internal Thermistor Reading
 //		uint32_t reading = HAL_ADC_GetValue(&hadc1);
@@ -1805,6 +1844,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc){
 }
 void HAL_GPIO_EXTI_Callback( uint16_t GPIO_Pin)
 {
+	if(eeprom_busy){return;}
 	switch(GPIO_Pin){
 	case FAN_TACH1_Pin:
 		if(hfans[FAN_IN_1].tach_finished){return;}

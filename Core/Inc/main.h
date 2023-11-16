@@ -93,6 +93,10 @@ void Error_Handler(void);
 #define FAN_TACH1_EXTI_IRQn EXTI9_5_IRQn
 #define FAN_PWM_Pin GPIO_PIN_0
 #define FAN_PWM_GPIO_Port GPIOB
+#define I2C_SCL_Pin GPIO_PIN_10
+#define I2C_SCL_GPIO_Port GPIOB
+#define FLASH_WP_Pin GPIO_PIN_12
+#define FLASH_WP_GPIO_Port GPIOB
 #define SPI_MSTR_Pin GPIO_PIN_6
 #define SPI_MSTR_GPIO_Port GPIOC
 #define SPI_SLOW_Pin GPIO_PIN_7
@@ -113,6 +117,8 @@ void Error_Handler(void);
 #define SPI_MISO_GPIO_Port GPIOC
 #define SPI_MOSI_Pin GPIO_PIN_12
 #define SPI_MOSI_GPIO_Port GPIOC
+#define I2C_SDA_Pin GPIO_PIN_3
+#define I2C_SDA_GPIO_Port GPIOB
 #define AMS_OKAY_Pin GPIO_PIN_4
 #define AMS_OKAY_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
